@@ -4,7 +4,7 @@ from logging import getLogger
 import random
 from time import sleep
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlparse, urlencode
 
 import httpx
 from ruamel.yaml import YAML
@@ -33,7 +33,6 @@ def download(
     response.raise_for_status()
     result = response.json()
     logger.debug(f"{url} | {result}")
-    # print(len(result["query"]["pages"]))  # TESTING
     if not result.get("batchcomplete"):
         logger.warning(f"batchcomplete != true | {url}")
     warnings = result.get("warnings")
@@ -46,6 +45,7 @@ def download(
     if "query" not in result:
         logger.warning(f"No results! | {url}")
         return
+    print(len(result["query"]["pages"]))  # TESTING
     for page in result["query"]["pages"]:
         pageid = page["pageid"]
         if skip_condition is not None and skip_condition(page):
@@ -72,12 +72,24 @@ def download(
             )
             if page["ns"] == 14:  # is Category page
                 title_ = title.replace(" ", "_")
-                subcat_url = re.sub(r"Category:[a-zA-Z0-9_!-]+", f'{title_}', url)
+
+                parsed_url = urlparse(url)
+                query_params = dict(parse_qsl(parsed_url.query))
+                # print(query_params)
+                query_params["gcmtitle"] = f"{title_}"
+                if "gcmcontinue" in query_params:
+                    del query_params["gcmcontinue"]
+                new_query_string = urlencode(query_params)
+                subcat_url = parsed_url._replace(query=new_query_string).geturl()
+
+                # subcat_url = re.sub(r"Category:[a-zA-Z0-9_!-]+", f'{title_}', url)
+                # subcat_url = re.sub(r"&gcmcontinue=[a-zA-Z0-9%]+", "", subcat_url)
                 print(title_)
-                # print(subcat_url)
+                print(subcat_url)
                 # download(client, yaml, continue_key, subcat_url)
 
-                gcmcontinue =  download(client, yaml, continue_key, subcat_url)
+                # perform download on subcategory
+                gcmcontinue = download(client, yaml, continue_key, subcat_url)
                 while gcmcontinue is not None:
                     sleep(random.uniform(1, 2))
                     gcmurl = f"{subcat_url}&gcmcontinue={quote(gcmcontinue)}"
