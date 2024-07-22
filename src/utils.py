@@ -10,8 +10,6 @@ import httpx
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-import re
-
 
 logger = getLogger(__name__)
 
@@ -41,7 +39,6 @@ def download(
     continue_value = (
         result["continue"][continue_key] if result.get("continue") else None
     )
-    print("continue_value", continue_value)
     if "query" not in result:
         logger.warning(f"No results! | {url}")
         return
@@ -71,28 +68,20 @@ def download(
                 out,
             )
             if page["ns"] == 14:  # is Category page
-                title_ = title.replace(" ", "_")
-
                 parsed_url = urlparse(url)
                 query_params = dict(parse_qsl(parsed_url.query))
-                # print(query_params)
-                query_params["gcmtitle"] = f"{title_}"
+                title_ = title.replace(" ", "_")
+                query_params["gcmtitle"] = title_
                 if "gcmcontinue" in query_params:
                     del query_params["gcmcontinue"]
                 new_query_string = urlencode(query_params)
                 subcat_url = parsed_url._replace(query=new_query_string).geturl()
 
-                # subcat_url = re.sub(r"Category:[a-zA-Z0-9_!-]+", f'{title_}', url)
-                # subcat_url = re.sub(r"&gcmcontinue=[a-zA-Z0-9%]+", "", subcat_url)
-                print(title_)
-                print(subcat_url)
-                # download(client, yaml, continue_key, subcat_url)
-
-                # perform download on subcategory
                 gcmcontinue = download(client, yaml, continue_key, subcat_url)
                 while gcmcontinue is not None:
                     sleep(random.uniform(1, 2))
                     gcmurl = f"{subcat_url}&gcmcontinue={quote(gcmcontinue)}"
                     gcmcontinue = download(client, yaml, continue_key, gcmurl)
+            print()
 
     return continue_value
