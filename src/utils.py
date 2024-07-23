@@ -24,7 +24,7 @@ def get_retry(client: httpx.Client, url: str) -> httpx.Response:
 
 
 def download(
-    client: httpx.Client, yaml: YAML, continue_key: str, url: str, skip_condition=None
+    client: httpx.Client, yaml: YAML, continue_key: str, url: str, seen: set, skip_condition=None
 ) -> Optional[str]:
     # logger.info(url)
     response = client.get(url, follow_redirects=True)
@@ -67,7 +67,7 @@ def download(
                 },
                 out,
             )
-            if page["ns"] == 14:  # is Category page
+            if page["ns"] == 14 and pageid not in seen:  # is Category page
                 parsed_url = urlparse(url)
                 query_params = dict(parse_qsl(parsed_url.query))
                 title_ = title.replace(" ", "_")
@@ -77,11 +77,30 @@ def download(
                 new_query_string = urlencode(query_params)
                 subcat_url = parsed_url._replace(query=new_query_string).geturl()
 
-                gcmcontinue = download(client, yaml, continue_key, subcat_url)
+                gcmcontinue, seen = download(client, yaml, continue_key, subcat_url, seen)
                 while gcmcontinue is not None:
                     sleep(random.uniform(1, 2))
                     gcmurl = f"{subcat_url}&gcmcontinue={quote(gcmcontinue)}"
-                    gcmcontinue = download(client, yaml, continue_key, gcmurl)
-            print()
+                    gcmcontinue, seen = download(client, yaml, continue_key, gcmurl, seen)
+                seen.add(pageid)
+                print()
 
-    return continue_value
+    return continue_value, seen
+
+def get_pageid(client: httpx.Client, category: str) -> Optional[str]:
+    url = f"https://yugipedia.com/api.php?action=query&titles=Category:{category}&format=json"
+    response = client.get(url, follow_redirects=True)
+    response.raise_for_status()
+    result = response.json()
+    if not result.get("batchcomplete"):
+        logger.warning(f"batchcomplete != true | {url}")
+    warnings = result.get("warnings")
+    if warnings:
+        logger.warning(f"{warnings} | {url}")
+    if "query" not in result:
+        logger.warning(f"No results! | {url}")
+        return
+    pageid = next(iter(result["query"]["pages"]))
+    if pageid != -1:
+        return pageid
+    return
